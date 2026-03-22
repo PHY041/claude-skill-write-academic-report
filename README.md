@@ -41,8 +41,10 @@ ln -s $(pwd) ~/.claude/skills/write-report
 brew install tectonic    # macOS
 # Or: cargo install tectonic
 
-# Python 3.10+ for cross-ref audit (included)
+# Python 3.10+ for scripts (included)
+pip install requests   # for citation_checker.py
 python3 scripts/cross_ref_audit.py --help
+python3 scripts/citation_checker.py --help
 ```
 
 ## Usage
@@ -55,21 +57,32 @@ Invoke with `/write-report` in Claude Code, or describe your report needs and th
 2. Tell Claude: "Write my FYP report based on this repo"
 3. Claude will execute the 3-wave pipeline automatically
 
+### Citation verification
+
+Verify all citations against 3 academic databases before submission. Catches AI-hallucinated references (6-55% of AI-generated citations are fabricated):
+
+```bash
+# Check all .bib files
+python3 scripts/citation_checker.py path/to/report/
+
+# JSON output for CI
+python3 scripts/citation_checker.py references.bib --json
+```
+
+Cascading pipeline: CrossRef (140M+ DOIs) -> Semantic Scholar (200M+ papers) -> OpenAlex (240M+ works). Detects fully fabricated, chimeric (blended), and modified-real hallucinations.
+
 ### Cross-reference audit
 
-After parallel agents write chapters, run the audit to catch duplicate labels:
+After parallel agents write chapters, catch duplicate labels:
 
 ```bash
 python3 scripts/cross_ref_audit.py path/to/report/
-
-# JSON output for CI
-python3 scripts/cross_ref_audit.py path/to/report/ --json
 ```
 
 ## What's included
 
 ```
-write-report/
+write-academic-report/
   SKILL.md                              # Main skill definition
   README.md                             # This file
   references/
@@ -86,6 +99,7 @@ write-report/
       appendices/appendix_a.tex         # Appendix template
       references.bib                    # Bibliography
   scripts/
+    citation_checker.py                 # Multi-source citation verifier (CrossRef + S2 + OpenAlex)
     cross_ref_audit.py                  # Cross-reference + duplicate label checker
 ```
 

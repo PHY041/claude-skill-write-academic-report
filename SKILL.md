@@ -22,7 +22,22 @@ Turn a research repository into a **publication-quality LaTeX thesis** in 2-4 ho
 
 **This rule is inherited from ml-paper-writing and is non-negotiable.**
 
-AI-generated citations have a **~40% error rate**. NEVER generate BibTeX entries from memory. ALWAYS fetch programmatically via Semantic Scholar, CrossRef, or arXiv APIs.
+### The Problem (Backed by Data)
+
+| Statistic | Source |
+|-----------|--------|
+| **6-55%** of AI-generated citations are fabricated | Multiple studies (varies by model/domain) |
+| **100+** hallucinated refs in NeurIPS 2025 accepted papers | GPTZero analysis, Jan 2026 |
+| **50+** hallucinated refs in ICLR 2026 submissions | GPTZero analysis, Feb 2026 |
+| Only **26.5%** of AI-generated references are entirely accurate | Paper-Checker 2026 survey |
+| **206+** legal sanctions for AI-hallucinated citations in courts | As of July 2025 |
+| **3 types**: fully fabricated, chimeric (blended), modified real | CheckIfExist (arXiv 2602.15871) |
+
+Universities increasingly treat fake citations as **academic misconduct** — failed assignments, course failure, or expulsion.
+
+### The Rule
+
+**NEVER generate BibTeX entries from memory. ALWAYS fetch programmatically.**
 
 ```
 IF you cannot programmatically fetch a citation:
@@ -31,7 +46,42 @@ IF you cannot programmatically fetch a citation:
     → NEVER invent a plausible-sounding reference
 ```
 
-See [references/citation-workflow.md](references/citation-workflow.md) for the full verification pipeline.
+### Automated Verification: citation_checker.py
+
+After writing, **always run the citation checker** before submission:
+
+```bash
+# Check a single .bib file
+python scripts/citation_checker.py references.bib
+
+# Check all .bib files in a report directory
+python scripts/citation_checker.py path/to/report/
+
+# JSON output (for CI pipelines)
+python scripts/citation_checker.py references.bib --json
+```
+
+The checker uses a **cascading 3-source verification pipeline**:
+
+```
+CrossRef (140M+ DOIs) → Semantic Scholar (200M+ papers) → OpenAlex (240M+ works)
+```
+
+For each citation it:
+1. Searches by DOI (if available) or title
+2. Computes title similarity + author overlap
+3. Flags red flags (invalid DOI, generic title, missing fields, chimeric blends)
+4. Reports: **verified** (2+ sources), **suspicious** (1 source), or **not found** (likely hallucinated)
+
+**Red flag detection catches:**
+- Fully fabricated citations (no match in any database)
+- Chimeric hallucinations (title matches but authors don't)
+- Invalid DOI formats
+- Suspiciously generic titles common in AI output
+- Missing critical fields (authors, year)
+- Future publication years
+
+See [references/citation-workflow.md](references/citation-workflow.md) for the full API documentation and Python CitationManager class.
 
 ---
 
