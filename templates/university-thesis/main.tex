@@ -1,0 +1,44 @@
+% University Thesis Template — Generic
+% Adapt to your university's specific requirements
+%
+% Compile: tectonic main.tex
+% Or:      latexmk -pdf main.tex
+
+\documentclass[12pt,a4paper,oneside]{report}
+
+% --- Preamble ---
+\input{preamble}
+
+\begin{document}
+
+% --- Front Matter ---
+\pagenumbering{roman}
+\input{front_matter}
+
+\tableofcontents
+\newpage
+\listoffigures
+\newpage
+\listoftables
+\newpage
+
+% --- Main Chapters ---
+\pagenumbering{arabic}
+\setcounter{page}{1}
+
+\input{chapters/ch1_introduction}
+\input{chapters/ch2_literature_review}
+\input{chapters/ch3_methodology}
+\input{chapters/ch4_experimental_setup}
+\input{chapters/ch5_results}
+\input{chapters/ch6_conclusion}
+
+% --- References ---
+\bibliographystyle{plainnat}
+\bibliography{references}
+
+% --- Appendices ---
+\appendix
+\input{appendices/appendix_a}
+
+\end{document}

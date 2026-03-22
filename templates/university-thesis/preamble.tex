@@ -1,0 +1,86 @@
+% =============================================================
+% Preamble — shared across all chapters
+% Adapt margins, fonts, and packages to your university's spec
+% =============================================================
+
+% --- Page Layout ---
+\usepackage[
+    a4paper,
+    top=2.5cm,
+    bottom=2.5cm,
+    left=3cm,       % Wider left margin for binding
+    right=2.5cm
+]{geometry}
+
+% --- Encoding & Fonts ---
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{mathptmx}          % Times Roman (common university requirement)
+
+% --- Spacing ---
+\usepackage{setspace}
+\onehalfspacing                 % 1.5 line spacing (common requirement)
+\usepackage{parskip}            % Paragraph spacing instead of indent
+
+% --- Tables ---
+\usepackage{booktabs}           % Professional table rules
+\usepackage{multirow}           % Multi-row cells
+\usepackage{longtable}          % Tables spanning pages
+\usepackage{tabularx}           % Auto-width columns
+
+% --- Figures ---
+\usepackage{graphicx}           % \includegraphics
+\usepackage{subcaption}         % Subfigures (a), (b), (c)
+\usepackage{float}              % [H] float placement
+
+% --- Code Listings ---
+\usepackage{listings}
+\lstset{
+    basicstyle=\ttfamily\small,
+    breaklines=true,
+    frame=single,
+    numbers=left,
+    numberstyle=\tiny\color{gray},
+    keywordstyle=\color{blue},
+    commentstyle=\color{green!50!black},
+    stringstyle=\color{red!70!black},
+    tabsize=4,
+}
+
+% --- Algorithms ---
+\usepackage[ruled,vlined]{algorithm2e}
+
+% --- Math ---
+\usepackage{amsmath,amssymb,amsthm}
+
+% --- Citations ---
+\usepackage{natbib}
+
+% --- Colors ---
+\usepackage[dvipsnames]{xcolor}
+
+% --- Hyperlinks (load before cleveref) ---
+\usepackage[
+    colorlinks=true,
+    linkcolor=NavyBlue,
+    citecolor=ForestGreen,
+    urlcolor=BrickRed,
+    bookmarks=true
+]{hyperref}
+
+% --- Cross-references (MUST load AFTER hyperref) ---
+\usepackage[nameinlink,capitalise]{cleveref}
+
+% =============================================================
+% Shared Macros — define once, use across all chapters
+% =============================================================
+
+% Project-specific terms (ensure consistency)
+% \newcommand{\projectname}{Your Project Name\xspace}
+% \newcommand{\systemname}{YourSystem\xspace}
+
+% Common abbreviations
+\usepackage{xspace}
+\newcommand{\eg}{e.g.,\xspace}
+\newcommand{\ie}{i.e.,\xspace}
+\newcommand{\etal}{\textit{et al.}\xspace}
