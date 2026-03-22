@@ -176,27 +176,43 @@ def title_similarity(a: str, b: str) -> float:
 
 
 def author_overlap(entry_authors: str, found_authors: str) -> float:
-    """Check if author last names overlap."""
+    """Check if author last names overlap between BibTeX entry and API result."""
     if not entry_authors or not found_authors:
         return 0.0
 
     def extract_last_names(text: str) -> set[str]:
-        # Split by "and" first (BibTeX convention), then handle "Last, First"
-        people = re.split(r"\band\b", text.lower())
+        lower = text.lower().strip()
         names = set()
-        for person in people:
-            person = person.strip()
-            if not person:
-                continue
-            # "Last, First" format — take the part before comma
-            if "," in person:
-                last = person.split(",")[0].strip().split()[-1]
-                names.add(last)
-            else:
-                # "First Last" format — take last word
+
+        if re.search(r"\band\b", lower):
+            # BibTeX format: "Last, First and Last, First"
+            people = re.split(r"\band\b", lower)
+            for person in people:
+                person = person.strip()
+                if not person:
+                    continue
+                if "," in person:
+                    # "Last, First" → take before comma
+                    last = person.split(",")[0].strip().split()[-1]
+                    names.add(last)
+                else:
+                    # "First Last" → take last word
+                    words = person.split()
+                    if words:
+                        names.add(words[-1])
+        else:
+            # API format: "First Last, First Last" (comma-separated)
+            people = lower.split(",")
+            for person in people:
+                person = person.strip()
+                if not person:
+                    continue
                 words = person.split()
-                if words:
+                if len(words) >= 2:
                     names.add(words[-1])
+                elif words:
+                    names.add(words[0])
+
         return names
 
     entry_names = extract_last_names(entry_authors)
@@ -230,7 +246,7 @@ def check_crossref(entry: BibEntry, verbose: bool = False) -> Optional[dict]:
                 title = data.get("title", [""])[0]
                 authors_raw = data.get("author", [])
                 authors = ", ".join(
-                    f"{a.get('family', '')} {a.get('given', '')}"
+                    f"{a.get('given', '')} {a.get('family', '')}"
                     for a in authors_raw
                 )
                 return {
@@ -244,32 +260,39 @@ def check_crossref(entry: BibEntry, verbose: bool = False) -> Optional[dict]:
                     ),
                 }
 
-        # Title search
-        query = urllib.parse.quote(entry.title)
-        url = f"https://api.crossref.org/works?query.title={query}&rows=3"
-        resp = requests.get(url, headers=HEADERS, timeout=15)
-        if resp.status_code == 200:
-            items = resp.json().get("message", {}).get("items", [])
-            for item in items:
-                found_title = item.get("title", [""])[0]
-                sim = title_similarity(entry.title, found_title)
-                if sim > 0.6:
-                    authors_raw = item.get("author", [])
-                    authors = ", ".join(
-                        f"{a.get('family', '')} {a.get('given', '')}"
-                        for a in authors_raw
-                    )
-                    return {
-                        "source": "CrossRef",
-                        "title": found_title,
-                        "authors": authors,
-                        "doi": item.get("DOI", ""),
-                        "year": str(
-                            item.get("published-print", item.get("published-online", {}))
-                            .get("date-parts", [[""]])[0][0]
-                        ),
-                        "similarity": sim,
-                    }
+        # Title search — try full title, then subtitle if colon present
+        search_titles = [entry.title]
+        if ":" in entry.title:
+            subtitle = entry.title.split(":", 1)[1].strip()
+            if len(subtitle.split()) >= 4:
+                search_titles.append(subtitle)
+
+        for search_title in search_titles:
+            query = urllib.parse.quote(search_title)
+            url = f"https://api.crossref.org/works?query.title={query}&rows=5"
+            resp = requests.get(url, headers=HEADERS, timeout=15)
+            if resp.status_code == 200:
+                items = resp.json().get("message", {}).get("items", [])
+                for item in items:
+                    found_title = item.get("title", [""])[0]
+                    sim = title_similarity(entry.title, found_title)
+                    if sim > 0.6:
+                        authors_raw = item.get("author", [])
+                        authors = ", ".join(
+                            f"{a.get('given', '')} {a.get('family', '')}"
+                            for a in authors_raw
+                        )
+                        return {
+                            "source": "CrossRef",
+                            "title": found_title,
+                            "authors": authors,
+                            "doi": item.get("DOI", ""),
+                            "year": str(
+                                item.get("published-print", item.get("published-online", {}))
+                                .get("date-parts", [[""]])[0][0]
+                            ),
+                            "similarity": sim,
+                        }
     except Exception as e:
         if verbose:
             print(f"  CrossRef error for '{entry.key}': {e}")
@@ -280,72 +303,88 @@ def check_semantic_scholar(
     entry: BibEntry, verbose: bool = False
 ) -> Optional[dict]:
     """Search Semantic Scholar. Covers 200M+ papers with author disambiguation."""
-    try:
-        query = urllib.parse.quote(entry.title)
-        url = f"https://api.semanticscholar.org/graph/v1/paper/search?query={query}&limit=3&fields=title,authors,year,externalIds"
-        resp = requests.get(url, headers=HEADERS, timeout=15)
-        if resp.status_code == 200:
-            papers = resp.json().get("data", [])
-            for paper in papers:
-                found_title = paper.get("title", "")
-                sim = title_similarity(entry.title, found_title)
-                if sim > 0.6:
-                    authors = ", ".join(
-                        a.get("name", "") for a in paper.get("authors", [])
-                    )
-                    ext_ids = paper.get("externalIds", {})
-                    return {
-                        "source": "Semantic Scholar",
-                        "title": found_title,
-                        "authors": authors,
-                        "doi": ext_ids.get("DOI", ""),
-                        "arxiv": ext_ids.get("ArXiv", ""),
-                        "year": str(paper.get("year", "")),
-                        "similarity": sim,
-                    }
-        elif resp.status_code == 429:
+    query = urllib.parse.quote(entry.title)
+    url = f"https://api.semanticscholar.org/graph/v1/paper/search?query={query}&limit=3&fields=title,authors,year,externalIds"
+
+    for attempt in range(2):
+        try:
+            resp = requests.get(url, headers=HEADERS, timeout=15)
+            if resp.status_code == 200:
+                papers = resp.json().get("data", [])
+                for paper in papers:
+                    found_title = paper.get("title", "")
+                    sim = title_similarity(entry.title, found_title)
+                    if sim > 0.6:
+                        authors = ", ".join(
+                            a.get("name", "") for a in paper.get("authors", [])
+                        )
+                        ext_ids = paper.get("externalIds", {})
+                        return {
+                            "source": "Semantic Scholar",
+                            "title": found_title,
+                            "authors": authors,
+                            "doi": ext_ids.get("DOI", ""),
+                            "arxiv": ext_ids.get("ArXiv", ""),
+                            "year": str(paper.get("year", "")),
+                            "similarity": sim,
+                        }
+                return None  # Got 200 but no match
+            elif resp.status_code == 429:
+                wait = 5 if attempt == 0 else 10
+                if verbose:
+                    print(f"  Semantic Scholar rate limited, waiting {wait}s (attempt {attempt + 1})...")
+                time.sleep(wait)
+                continue
+            else:
+                return None
+        except Exception as e:
             if verbose:
-                print("  Semantic Scholar rate limited, waiting 3s...")
-            time.sleep(3)
-    except Exception as e:
-        if verbose:
-            print(f"  Semantic Scholar error for '{entry.key}': {e}")
+                print(f"  Semantic Scholar error for '{entry.key}': {e}")
+            return None
     return None
 
 
 def check_openalex(entry: BibEntry, verbose: bool = False) -> Optional[dict]:
     """Search OpenAlex. Fully open, broadest coverage (240M+ works)."""
-    try:
-        query = urllib.parse.quote(entry.title)
-        url = f"https://api.openalex.org/works?filter=title.search:{query}&per_page=3"
-        resp = requests.get(
-            url,
-            headers={**HEADERS, "Accept": "application/json"},
-            timeout=15,
-        )
-        if resp.status_code == 200:
-            results = resp.json().get("results", [])
-            for work in results:
-                found_title = work.get("title", "")
-                sim = title_similarity(entry.title, found_title)
-                if sim > 0.6:
-                    authors = ", ".join(
-                        a.get("author", {}).get("display_name", "")
-                        for a in work.get("authorships", [])
-                    )
-                    return {
-                        "source": "OpenAlex",
-                        "title": found_title,
-                        "authors": authors,
-                        "doi": (work.get("doi") or "").replace(
-                            "https://doi.org/", ""
-                        ),
-                        "year": str(work.get("publication_year", "")),
-                        "similarity": sim,
-                    }
-    except Exception as e:
-        if verbose:
-            print(f"  OpenAlex error for '{entry.key}': {e}")
+    # Try full title, then subtitle if colon present
+    search_titles = [entry.title]
+    if ":" in entry.title:
+        subtitle = entry.title.split(":", 1)[1].strip()
+        if len(subtitle.split()) >= 4:
+            search_titles.append(subtitle)
+
+    for search_title in search_titles:
+        try:
+            query = urllib.parse.quote(search_title)
+            url = f"https://api.openalex.org/works?filter=title.search:{query}&per_page=5"
+            resp = requests.get(
+                url,
+                headers={**HEADERS, "Accept": "application/json"},
+                timeout=15,
+            )
+            if resp.status_code == 200:
+                results = resp.json().get("results", [])
+                for work in results:
+                    found_title = work.get("title", "")
+                    sim = title_similarity(entry.title, found_title)
+                    if sim > 0.6:
+                        authors = ", ".join(
+                            a.get("author", {}).get("display_name", "")
+                            for a in work.get("authorships", [])
+                        )
+                        return {
+                            "source": "OpenAlex",
+                            "title": found_title,
+                            "authors": authors,
+                            "doi": (work.get("doi") or "").replace(
+                                "https://doi.org/", ""
+                            ),
+                            "year": str(work.get("publication_year", "")),
+                            "similarity": sim,
+                        }
+        except Exception as e:
+            if verbose:
+                print(f"  OpenAlex error for '{entry.key}': {e}")
     return None
 
 
@@ -433,8 +472,8 @@ def verify_entry(entry: BibEntry, verbose: bool = False) -> VerificationResult:
                 result.best_match_similarity = sim
                 result.best_match_title = match.get("title", "")
 
-        # Rate limiting between APIs
-        time.sleep(0.5)
+        # Rate limiting between APIs (Semantic Scholar needs ~1s between requests)
+        time.sleep(1.0)
 
     # Compute confidence
     if len(result.sources_found) >= 2:
@@ -452,15 +491,14 @@ def verify_entry(entry: BibEntry, verbose: bool = False) -> VerificationResult:
             if ao > 0.3:
                 result.confidence = min(1.0, result.confidence + 0.1)
                 result.notes.append(f"Author overlap: {ao:.0%}")
-            elif ao == 0 and result.best_match_similarity < 0.9:
-                # Only flag chimeric if title isn't near-exact match
-                # Near-exact titles with author mismatch is usually an API
-                # returning different metadata formats, not hallucination
+            elif ao == 0 and entry.authors:
+                # Zero author overlap = likely chimeric (real title, wrong authors)
                 result.notes.append("WARNING: No author overlap with best match")
-                result.confidence -= 0.2
+                result.confidence -= 0.3
                 result.red_flags.append(
                     "Title matches but authors don't — possible chimeric hallucination"
                 )
+                result.status = "suspicious"
 
     elif len(result.sources_found) == 1:
         result.status = "suspicious"
